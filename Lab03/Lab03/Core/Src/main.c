@@ -47,9 +47,7 @@
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
-/* USER CODE BEGIN PFP */
-
-/* USER CODE END PFP */
+void TIM2_IRQHandler(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
@@ -66,6 +64,8 @@ int main(void)
 	SystemClock_Config(); //Configure the system clock
 
 	__HAL_RCC_GPIOC_CLK_ENABLE(); // Enable the GPIOC clock in the RCC
+	//RCC->APB1ENR |= RCC_APB1ENR_TIM2EN;
+	__HAL_RCC_TIM2_CLK_ENABLE(); // Enable timer 2 peripheral
 	// Set up a configuration struct to pass to the initialization function
 	GPIO_InitTypeDef initStr = {GPIO_PIN_6 | GPIO_PIN_7| GPIO_PIN_8 | GPIO_PIN_9,
 	GPIO_MODE_OUTPUT_PP,
@@ -73,41 +73,39 @@ int main(void)
 	GPIO_NOPULL};
 	HAL_GPIO_Init(GPIOC, &initStr); // Initialize pins PC6,7,8 & PC9
 	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_9, GPIO_PIN_SET); // Start PC9 high (green)
-	HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_7); //toggle blue on
+	//HAL_GPIO_WritePin(GPIOC, GPIO_PIN_8, GPIO_PIN_RESET)
+	// Setting parameters
+	uint32_t timer_freq = 8000000;
+	uint32_t target_freq = 4;
+	uint32_t psc = 7999;
+	uint32_t auto_reload_val = (timer_freq/((psc + 1)*target_freq));
+	//Set psc
+	TIM2->PSC = 7999;
+	TIM2->ARR = auto_reload_val;
+	// enable update interrupt
+	TIM2->DIER |= TIM_DIER_UIE;
+	// configure and enable/start timer
+	TIM2->CR1 |= TIM_CR1_CEN;
 	
-	//*****Configuring the EXTI*****************//
-	// Setting PA0 to interrupt -- low speed & internal pulldown enabled
-	GPIO_InitTypeDef initStrPA0 = {GPIO_PIN_0,
-	GPIO_SPEED_FREQ_LOW,
-	GPIO_PULLDOWN};
-	//PA0 connected to EXTI0 --  SYSCFG_EXTICR1
-	SYSCFG->EXTICR[0] &= ~(1<<0); //sets 0th bit = 0
-	SYSCFG->EXTICR[0] &= ~(1<<1); //sets 1th bit = 0
-	SYSCFG->EXTICR[0] &= ~(1<<2); //sets 2nd bit = 0
-	SYSCFG->EXTICR[0] &= ~(1<<3); //sets 3rd bit = 0
-	// unmask interrupt
-	EXTI->IMR |= 0b1;
-	// enable rising-edge trigger
-	EXTI->RTSR |= 0b1;
+	//*****Enable and Set Priority of the TIM2 Interrupt*****************//
+	//Enable the selected EXTI interrupt that references timer 2
+	NVIC_EnableIRQ(TIM2_IRQn);
+	//Set the priority for the interrupt to 2
+	NVIC_SetPriority(TIM2_IRQn, 2);
 	
-	//*****Setting the SYSCFG Pin Multiplexer*****************//
-	//Use the RCC to enable the peripheral clock to the SYSCFG peripheral
-	RCC->APB2ENR |= 0b1; 
-	//The SYSCFG multiplexer that can route PA0 to the EXTI peripheral: SYSCFG_EXTICR1
-	
-	//*****Enable and Set Priority of the EXTI Interrupt*****************//
-	//Enable the selected EXTI interrupt that references line 0
-	NVIC_EnableIRQ(EXTI0_1_IRQn);
-	//Set the priority for the interrupt to 1 (or 3)
-	NVIC_SetPriority(EXTI0_1_IRQn, 1);
-	// Set priority for Systick to 2
-	NVIC_SetPriority(SysTick_IRQn, 2);
 	
 	while (1) {
-	HAL_Delay(400); // Delay 400ms
-	// Toggle red 
-	HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_6);
 	}
+}
+
+/**
+* TIM2 Interrupt Handler
+*/
+void TIM2_IRQHandler(){
+	//toggle green and orange
+	HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_8 | GPIO_PIN_9); 
+	// clear pending register
+	TIM2->SR &= ~TIM_SR_UIF;
 }
 
 /**
